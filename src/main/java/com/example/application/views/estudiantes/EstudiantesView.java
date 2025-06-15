@@ -10,6 +10,7 @@ import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.Label;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -19,6 +20,8 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.BeanValidationBinder;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+
+import java.util.List;
 
 @PageTitle("Estudiantes")
 @Route(value = "estudiantes", layout = MainLayout.class)
@@ -48,6 +51,8 @@ public class EstudiantesView extends VerticalLayout {
     private final Grid<ControlHoras> gridHoras = new Grid<>(ControlHoras.class, false);
     private final BeanValidationBinder<Estudiante> binder = new BeanValidationBinder<>(Estudiante.class);
 
+    private final Label resumenHorasLabel = new Label();
+
     private Estudiante estudianteActual;
 
     public EstudiantesView(EstudianteService estudianteService, ControlHorasService horasService) {
@@ -71,7 +76,9 @@ public class EstudiantesView extends VerticalLayout {
 
         buscarBtn.addClickListener(e -> buscarEstudiantePorCarnet());
 
-        add(titulo, formLayout, acciones, buscarLayout, grid, gridHoras);
+        resumenHorasLabel.getStyle().set("font-weight", "bold").set("margin", "10px 0");
+
+        add(titulo, formLayout, acciones, buscarLayout, grid, resumenHorasLabel, gridHoras);
     }
 
     private FormLayout crearFormulario() {
@@ -169,11 +176,24 @@ public class EstudiantesView extends VerticalLayout {
         String carnetValor = buscarCarnet.getValue();
         estudianteService.findByCarnet(carnetValor).ifPresentOrElse(est -> {
             grid.setItems(est);
-            gridHoras.setItems(horasService.findByCarnet(carnetValor));
+            List<ControlHoras> horas = horasService.findByCarnet(carnetValor);
+            gridHoras.setItems(horas);
+
+            long aprobadas = horas.stream().filter(h -> "Aprobada".equalsIgnoreCase(h.getEstado())).count();
+            long rechazadas = horas.stream().filter(h -> "Rechazada".equalsIgnoreCase(h.getEstado())).count();
+            long pendientes = horas.stream().filter(h ->
+                    h.getEstado() == null || h.getEstado().isBlank() || "Pendiente".equalsIgnoreCase(h.getEstado())
+            ).count();
+
+            String resumenTexto = String.format("Resumen: ✅ Aprobadas: %d | ❌ Rechazadas: %d | ⏳ Pendientes: %d",
+                    aprobadas, rechazadas, pendientes);
+            resumenHorasLabel.setText(resumenTexto);
+
         }, () -> {
             Notification.show("Estudiante no encontrado");
             grid.setItems();
             gridHoras.setItems();
+            resumenHorasLabel.setText("");
         });
     }
 
