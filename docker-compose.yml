@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  app:
+    image: tu-imagen-springboot # O usa build: . si estás construyendo local
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ep-late-thunder-a5md5x0d-pooler.us-east-2.aws.neon.tech:5432/neondb
+      SPRING_DATASOURCE_USERNAME: neondb_owner
+      SPRING_DATASOURCE_PASSWORD: npg_Owu8mJ9kaxVA
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
