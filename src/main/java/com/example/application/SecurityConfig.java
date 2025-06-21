@@ -28,7 +28,7 @@ public class SecurityConfig {
                     "/VAADIN/**", "/frontend/**", "/images/**", "/icons/**",
                     "/manifest.webmanifest", "/sw.js", "/offline.html",
                     "/h2-console/**", "/favicon.ico", "/static/**", "/js/**",
-                    "/css/**", "/webjars/**", "/login", "/logout",
+                    "/css/**", "/webjars/**", "/login", "/logout", "/post-logout",
                     "/v-r/**", "/v/**", "/UIDL/**", "/HEARTBEAT/**"
                 ).permitAll()
                 .anyRequest().authenticated()
@@ -43,7 +43,12 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtConverter))
             )
-            .logout(logout -> logout.logoutSuccessUrl("/"))
+            .logout(logout -> logout
+                .logoutSuccessUrl("/post-logout") // Ahora redirige a la página post-logout
+                .invalidateHttpSession(true)
+                .clearAuthentication(true)
+                .deleteCookies("JSESSIONID")
+            )
             .csrf(csrf -> csrf.disable());
 
         return http.build();

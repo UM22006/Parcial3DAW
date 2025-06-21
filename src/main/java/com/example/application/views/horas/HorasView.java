@@ -2,11 +2,12 @@ package com.example.application.views.horas;
 
 import com.example.application.data.ControlHoras;
 import com.example.application.data.Estudiante;
-import com.example.application.services.ControlHorasService;
-import com.example.application.services.EstudianteService;
+import com.example.application.data.services.ControlHorasService;
+import com.example.application.data.services.EstudianteService;
 import com.example.application.views.MainLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.datetimepicker.DateTimePicker;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -19,19 +20,22 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.BeanValidationBinder;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 
 @PageTitle("Control de Horas")
 @Route(value = "horas", layout = MainLayout.class)
-public class HorasView extends VerticalLayout {
+@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+public class HorasView extends VerticalLayout implements BeforeEnterObserver {
 
     private final EstudianteService estudianteService;
     private final ControlHorasService controlHorasService;
@@ -77,6 +81,17 @@ public class HorasView extends VerticalLayout {
         actualizarGrid();
     }
 
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        boolean tieneAcceso = SecurityContextHolder.getContext().getAuthentication()
+                .getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN") || auth.getAuthority().equals("ROLE_USER"));
+
+        if (!tieneAcceso) {
+            event.rerouteTo("inicio");
+        }
+    }
+
     private void configurarBuscador() {
         buscarCarnet.setItems(estudianteService.findAll().stream().map(Estudiante::getCarnet).toList());
         buscarCarnet.addValueChangeListener(e -> {
@@ -96,8 +111,10 @@ public class HorasView extends VerticalLayout {
         fechaHoraIngreso.addValueChangeListener(e -> calcularHorasTrabajadas());
         fechaHoraSalida.addValueChangeListener(e -> calcularHorasTrabajadas());
         horasTrabajadas.setReadOnly(true);
-
         binder.bindInstanceFields(this);
+        // Enlace manual para actividades porque el nombre no coincide
+        binder.forField(actividades)
+            .bind(ControlHoras::getActividadesRealizadas, ControlHoras::setActividadesRealizadas);
     }
 
     private FormLayout crearFormulario() {
@@ -121,24 +138,30 @@ public class HorasView extends VerticalLayout {
         grid.addColumn(r -> r.getFechaHoraSalida().toLocalDate()).setHeader("Salida");
         grid.addColumn(ControlHoras::getHorasTrabajadas).setHeader("Horas");
         grid.addColumn(ControlHoras::getActividadesRealizadas).setHeader("Actividades");
-        grid.addComponentColumn(r -> crearBotonEstado(r)).setHeader("Acción");
+        grid.addColumn(r -> r.getEstado() != null ? r.getEstado() : "Pendiente").setHeader("Estado");
 
-        grid.asSingleSelect().addValueChangeListener(e -> editarRegistro(e.getValue()));
+        grid.addComponentColumn(registro -> {
+            Button editarBtn = new Button("✏️ Editar", e -> editarRegistro(registro));
+            Button eliminarBtn = new Button("🗑️ Eliminar", e -> confirmarEliminar(registro));
+            return new HorizontalLayout(editarBtn, eliminarBtn);
+        }).setHeader("Acciones");
     }
 
-    private Button crearBotonEstado(ControlHoras registro) {
-        Button aprobar = new Button("✅ Aprobar", e -> aprobarRegistro(registro));
-        Button rechazar = new Button("❌ Rechazar", e -> rechazarRegistro(registro));
-        HorizontalLayout layout = new HorizontalLayout(aprobar, rechazar);
-        return new Button("⋯", click -> layout.setVisible(!layout.isVisible())); // Encapsulado
-    }
-
-    private void aprobarRegistro(ControlHoras registro) {
-        Notification.show("Horas aprobadas para: " + registro.getEstudiante().getCarnet());
-    }
-
-    private void rechazarRegistro(ControlHoras registro) {
-        Notification.show("Horas rechazadas para: " + registro.getEstudiante().getCarnet());
+    private void confirmarEliminar(ControlHoras registro) {
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("Confirmar eliminación");
+        dialog.setText("¿Deseas eliminar este registro de horas?");
+        dialog.setConfirmText("Eliminar");
+        dialog.setCancelText("Cancelar");
+        dialog.addConfirmListener(e -> {
+            controlHorasService.delete(registro);
+            Notification.show("Registro eliminado");
+            actualizarGrid();
+            if (!buscarCarnet.isEmpty()) {
+                actualizarProgreso(buscarCarnet.getValue());
+            }
+        });
+        dialog.open();
     }
 
     private void guardarRegistro() {
@@ -191,8 +214,9 @@ public class HorasView extends VerticalLayout {
 
     private void actualizarProgreso(String carnet) {
         BigDecimal total = controlHorasService.findByCarnet(carnet).stream()
+                .filter(h -> "Aprobada".equalsIgnoreCase(h.getEstado()))
                 .map(ControlHoras::getHorasTrabajadas)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         progresoHoras.setValue(Math.min(total.floatValue(), 500));
     }
-} 
+}

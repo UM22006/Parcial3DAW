@@ -1,19 +1,21 @@
 package com.example.application.views;
 
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
+import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.html.Footer;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Header;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.Scroller;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.Layout;
 import com.vaadin.flow.router.PageTitle;
-import com.vaadin.flow.server.auth.AnonymousAllowed;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 
 @Layout
@@ -58,7 +60,26 @@ public class MainLayout extends AppLayout {
     }
 
     private Footer createFooter() {
-        return new Footer();
+        Footer footer = new Footer();
+
+        // Botón de logout actualizado con logout de Spring y Google
+        Button logoutButton = new Button("Cerrar sesión", new Icon(VaadinIcon.SIGN_OUT));
+        logoutButton.addClickListener(e -> {
+            UI.getCurrent().getPage().executeJs("""
+                fetch('/logout', { method: 'POST', credentials: 'same-origin' })
+                    .finally(() => {
+                        setTimeout(function() {
+                            window.location.href = 'https://accounts.google.com/Logout';
+                        }, 500);
+                    });
+            """);
+        });
+
+        HorizontalLayout layout = new HorizontalLayout(logoutButton);
+        layout.setPadding(true);
+        footer.add(layout);
+
+        return footer;
     }
 
     @Override
@@ -74,4 +95,3 @@ public class MainLayout extends AppLayout {
         return "";
     }
 }
-

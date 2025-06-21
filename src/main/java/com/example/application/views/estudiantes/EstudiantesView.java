@@ -2,8 +2,8 @@ package com.example.application.views.estudiantes;
 
 import com.example.application.data.ControlHoras;
 import com.example.application.data.Estudiante;
-import com.example.application.services.ControlHorasService;
-import com.example.application.services.EstudianteService;
+import com.example.application.data.services.ControlHorasService;
+import com.example.application.data.services.EstudianteService;
 import com.example.application.views.MainLayout;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
@@ -18,14 +18,19 @@ import com.vaadin.flow.component.textfield.EmailField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.BeanValidationBinder;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.List;
 
 @PageTitle("Estudiantes")
 @Route(value = "estudiantes", layout = MainLayout.class)
-public class EstudiantesView extends VerticalLayout {
+@PreAuthorize("hasRole('ADMIN')")
+public class EstudiantesView extends VerticalLayout implements BeforeEnterObserver {
 
     private final EstudianteService estudianteService;
     private final ControlHorasService horasService;
@@ -79,6 +84,17 @@ public class EstudiantesView extends VerticalLayout {
         resumenHorasLabel.getStyle().set("font-weight", "bold").set("margin", "10px 0");
 
         add(titulo, formLayout, acciones, buscarLayout, grid, resumenHorasLabel, gridHoras);
+    }
+
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        boolean isAdmin = SecurityContextHolder.getContext().getAuthentication()
+                .getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
+
+        if (!isAdmin) {
+            event.rerouteTo("inicio");
+        }
     }
 
     private FormLayout crearFormulario() {
@@ -139,7 +155,29 @@ public class EstudiantesView extends VerticalLayout {
         grid.addColumn(Estudiante::getDireccion).setHeader("Dirección");
         grid.addColumn(Estudiante::getCarrera).setHeader("Carrera");
 
-        grid.asSingleSelect().addValueChangeListener(e -> editarEstudiante(e.getValue()));
+        grid.addComponentColumn(estudiante -> {
+            Button editarBtn = new Button("✏️ Editar");
+            Button eliminarBtn = new Button("🗑️ Eliminar");
+
+            editarBtn.addClickListener(e -> editarEstudiante(estudiante));
+            eliminarBtn.addClickListener(e -> mostrarConfirmacionEliminar(estudiante));
+
+            return new HorizontalLayout(editarBtn, eliminarBtn);
+        }).setHeader("Acciones");
+    }
+
+    private void mostrarConfirmacionEliminar(Estudiante estudiante) {
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("Confirmar Eliminación");
+        dialog.setText("¿Estás seguro de eliminar al estudiante " + estudiante.getCarnet() + "?");
+        dialog.setConfirmText("Eliminar");
+        dialog.setCancelText("Cancelar");
+        dialog.addConfirmListener(e -> {
+            estudianteService.delete(estudiante);
+            Notification.show("Estudiante eliminado");
+            actualizarGrid();
+        });
+        dialog.open();
     }
 
     private void configurarGridHoras() {
@@ -181,12 +219,9 @@ public class EstudiantesView extends VerticalLayout {
 
             long aprobadas = horas.stream().filter(h -> "Aprobada".equalsIgnoreCase(h.getEstado())).count();
             long rechazadas = horas.stream().filter(h -> "Rechazada".equalsIgnoreCase(h.getEstado())).count();
-            long pendientes = horas.stream().filter(h ->
-                    h.getEstado() == null || h.getEstado().isBlank() || "Pendiente".equalsIgnoreCase(h.getEstado())
-            ).count();
+            long pendientes = horas.stream().filter(h -> h.getEstado() == null || h.getEstado().isBlank() || "Pendiente".equalsIgnoreCase(h.getEstado())).count();
 
-            String resumenTexto = String.format("Resumen: ✅ Aprobadas: %d | ❌ Rechazadas: %d | ⏳ Pendientes: %d",
-                    aprobadas, rechazadas, pendientes);
+            String resumenTexto = String.format("Resumen: ✅ Aprobadas: %d | ❌ Rechazadas: %d | ⏳ Pendientes: %d", aprobadas, rechazadas, pendientes);
             resumenHorasLabel.setText(resumenTexto);
 
         }, () -> {
